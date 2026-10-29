@@ -1,7 +1,8 @@
 "use client";
 
 import * as React from "react";
-import { Plus, Trash2, Users } from "lucide-react";
+import { Plus, ShieldAlert, Trash2, Users } from "lucide-react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -21,9 +22,15 @@ const POSITIONS: PlayerPosition[] = ["GK", "DF", "MF", "FW"];
 export function AdminTeams({
   teams,
   onChange,
+  onAddTeam,
+  onRemoveTeam,
+  usedTeamIds,
 }: {
   teams: Team[];
   onChange: (teams: Team[]) => void;
+  onAddTeam: () => Promise<void>;
+  onRemoveTeam: (teamId: string) => Promise<void>;
+  usedTeamIds: Set<string>;
 }) {
   const [openTeam, setOpenTeam] = React.useState<string | null>(null);
 
@@ -45,9 +52,21 @@ export function AdminTeams({
 
   return (
     <div className="space-y-4">
+      <SlotsBar count={teams.length} />
       <p className="text-xs text-muted-foreground">
-        16 clubs are required by this bracket. Names, colours and crest initials feed the whole public site.
+        Editing a team or its players never touches results or progression. Removing a team with confirmed
+        results is blocked — correct those results first.
       </p>
+      <div>
+        <button
+          type="button"
+          onClick={() => void onAddTeam()}
+          disabled={teams.length >= 16}
+          className="inline-flex h-7 items-center gap-1.5 rounded-md border border-input px-2.5 text-xs font-medium transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          <Plus className="size-3.5" /> Add team ({teams.length}/16)
+        </button>
+      </div>
 
       <div className="grid gap-3 lg:grid-cols-2">
         {teams.map((team, index) => (
@@ -135,6 +154,11 @@ export function AdminTeams({
                 </Field>
               </div>
 
+              <RemoveTeamButton
+                teamName={team.name}
+                inUse={usedTeamIds.has(team.id)}
+                onRemove={() => void onRemoveTeam(team.id)}
+              />
               <details
                 className="group rounded-md border border-border/60"
                 open={openTeam === team.id}
@@ -213,6 +237,76 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
     <div className="space-y-0.5">
       <Label className="text-[0.65rem] text-muted-foreground">{label}</Label>
       {children}
+    </div>
+  );
+}
+
+function SlotsBar({ count }: { count: number }) {
+  const full = count >= 16;
+  return (
+    <div className={`rounded-lg border px-3 py-2 text-xs ${full ? "border-primary/40 bg-primary/10" : "border-border/60 bg-muted/30"}`}>
+      <div className="flex items-center justify-between font-medium">
+        <span>{count}/16 tournament slots filled</span>
+        <span className="text-muted-foreground">{full ? "Full — editing existing teams still allowed" : `${16 - count} slots remaining`}</span>
+      </div>
+      <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-muted">
+        <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${Math.min(100, (count / 16) * 100)}%` }} />
+      </div>
+    </div>
+  );
+}
+
+function RemoveTeamButton({
+  teamName,
+  inUse,
+  onRemove,
+}: {
+  teamName: string;
+  inUse: boolean;
+  onRemove: () => void;
+}) {
+  const [confirming, setConfirming] = React.useState(false);
+  if (!confirming) {
+    return (
+      <button
+        type="button"
+        onClick={() => setConfirming(true)}
+        className="flex w-full cursor-pointer items-center gap-1.5 rounded-md px-2 py-1.5 text-xs font-medium text-destructive hover:bg-destructive/10"
+      >
+        <Trash2 className="size-3" /> Remove team
+      </button>
+    );
+  }
+  return (
+    <div className="rounded-md border border-destructive/40 bg-destructive/5 p-2 text-xs">
+      <p className="flex items-start gap-1.5 font-medium">
+        <ShieldAlert className="mt-px size-3.5 shrink-0" />
+        {inUse
+          ? `"${teamName}" appears in scheduled ties. The server will re-point those slots to “to be announced” — but ties with confirmed results block removal entirely. Continue?`
+          : `Remove "${teamName}" from the tournament? This cannot be undone.`}
+      </p>
+      <div className="mt-2 flex gap-1.5">
+        <button
+          type="button"
+          onClick={() => {
+            setConfirming(false);
+            toast.info("Removal cancelled");
+          }}
+          className="h-6 rounded-md border border-input px-2 text-[0.7rem] hover:bg-muted"
+        >
+          Keep
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            setConfirming(false);
+            onRemove();
+          }}
+          className="h-6 rounded-md bg-destructive px-2 text-[0.7rem] font-medium text-white hover:bg-destructive/90"
+        >
+          Remove team
+        </button>
+      </div>
     </div>
   );
 }

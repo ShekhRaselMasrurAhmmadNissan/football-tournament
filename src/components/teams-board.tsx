@@ -135,20 +135,20 @@ export function TeamsBoard() {
         </CardHeader>
         <CardContent className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
           {matches
-            .filter((match) => match.status === "finished")
+            .filter((match) => match.status === "completed")
             .map((match) => {
               const winner = winnerOf(match);
               return (
                 <div key={match.id} className="flex items-center gap-2 rounded-lg border border-border/60 px-2 py-1.5 text-xs">
                   <span className="font-mono text-muted-foreground">
-                    {match.homeScore}-{match.awayScore}
+                    {match.teamAScore}-{match.teamBScore}
                   </span>
-                  <span className={cn("truncate", winner === match.homeId && "font-semibold text-primary")}>
-                    {match.homeId ? teams.find((team) => team.id === match.homeId)?.shortName : "TBD"}
+                  <span className={cn("truncate", winner === match.teamAId && "font-semibold text-primary")}>
+                    {match.teamAId ? teams.find((team) => team.id === match.teamAId)?.shortName : "TBA"}
                   </span>
                   <span className="text-muted-foreground">v</span>
-                  <span className={cn("truncate", winner === match.awayId && "font-semibold text-primary")}>
-                    {match.awayId ? teams.find((team) => team.id === match.awayId)?.shortName : "TBD"}
+                  <span className={cn("truncate", winner === match.teamBId && "font-semibold text-primary")}>
+                    {match.teamBId ? teams.find((team) => team.id === match.teamBId)?.shortName : "TBA"}
                   </span>
                 </div>
               );

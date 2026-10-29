@@ -6,13 +6,14 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import type { TournamentConfig, Venue } from "@/lib/types";
+import { FIXED_VENUE } from "@/lib/venues";
+import type { Award, TournamentConfig, Venue } from "@/lib/types";
 
 function toLocalInput(iso: string): string {
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return "";
   const pad = (value: number) => String(value).padStart(2, "0");
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${date.getDate()}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
 function fromLocalInput(value: string): string {
@@ -20,21 +21,131 @@ function fromLocalInput(value: string): string {
   return Number.isNaN(date.getTime()) ? new Date().toISOString() : date.toISOString();
 }
 
+function formatBDT(value: number): string {
+  return `৳${Number(value || 0).toLocaleString("en-IN")}`;
+}
+
 export function AdminSettings({
+  mode,
   config,
   venues,
   onChange,
 }: {
+  mode: "general" | "prizes";
   config: TournamentConfig;
   venues: Venue[];
   onChange: (config: TournamentConfig, venues: Venue[]) => void;
 }) {
   function patchConfig(changes: Partial<TournamentConfig>) {
-    onChange({ ...config, ...changes }, venues);
+    onChange({ ...config, ...changes, venue: FIXED_VENUE }, venues);
   }
 
-  function patchVenue(id: string, changes: Partial<Venue>) {
-    onChange(config, venues.map((venue) => (venue.id === id ? { ...venue, ...changes } : venue)));
+  function patchAward(id: string, changes: Partial<Award>) {
+    onChange(
+      {
+        ...config,
+        awards: config.awards.map((award) => (award.id === id ? { ...award, ...changes } : award)),
+      },
+      venues,
+    );
+  }
+
+  function addAward() {
+    onChange(
+      {
+        ...config,
+        awards: [
+          ...config.awards,
+          { id: `award-${Date.now()}`, title: "New award", recipient: null, note: "" },
+        ],
+      },
+      venues,
+    );
+  }
+
+  if (mode === "prizes") {
+    return (
+      <div className="grid gap-4 lg:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <CardTitle>Prize money</CardTitle>
+            <CardDescription>Official cash prizes — shown on the public trophies section.</CardDescription>
+          </CardHeader>
+          <CardContent className="grid gap-3 sm:grid-cols-2">
+            <Field label="Champion (৳)">
+              <Input
+                type="number"
+                value={config.championPrize}
+                onChange={(event) => patchConfig({ championPrize: Number(event.target.value) || 0 })}
+              />
+            </Field>
+            <Field label="Runner-up (৳)">
+              <Input
+                type="number"
+                value={config.runnerUpPrize}
+                onChange={(event) => patchConfig({ runnerUpPrize: Number(event.target.value) || 0 })}
+              />
+            </Field>
+            <p className="text-xs text-muted-foreground sm:col-span-2">
+              Public display: Champion <strong className="text-foreground">{formatBDT(config.championPrize)}</strong> · Runner-up{" "}
+              <strong className="text-foreground">{formatBDT(config.runnerUpPrize)}</strong>
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Other awards</CardTitle>
+            <CardDescription>
+              Title, recipient and notes only — no cash values, exactly as confirmed by the committee.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {(config.awards ?? []).map((award) => (
+              <div key={award.id} className="grid grid-cols-[1fr_auto] gap-1.5 rounded-md border border-border/60 p-2">
+                <div className="grid grid-cols-2 gap-1.5">
+                  <Field label="Title">
+                    <Input
+                      value={award.title}
+                      onChange={(event) => patchAward(award.id, { title: event.target.value })}
+                      className="h-7 text-xs"
+                    />
+                  </Field>
+                  <Field label="Recipient (empty = not awarded yet)">
+                    <Input
+                      value={award.recipient ?? ""}
+                      onChange={(event) => patchAward(award.id, { recipient: event.target.value.trim() ? event.target.value.trim() : null })}
+                      className="h-7 text-xs"
+                      placeholder="To be announced"
+                    />
+                  </Field>
+                  <div className="col-span-2">
+                    <Field label="Note">
+                      <Input
+                        value={award.note}
+                        onChange={(event) => patchAward(award.id, { note: event.target.value })}
+                        className="h-7 text-xs"
+                      />
+                    </Field>
+                  </div>
+                </div>
+                <Button
+                  size="icon-xs"
+                  variant="ghost"
+                  onClick={() => onChange({ ...config, awards: config.awards.filter((item) => item.id !== award.id) }, venues)}
+                  aria-label="Remove award"
+                >
+                  <Trash2 />
+                </Button>
+              </div>
+            ))}
+            <Button size="xs" variant="outline" onClick={addAward}>
+              <Plus /> Add award
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
   }
 
   return (
@@ -42,7 +153,7 @@ export function AdminSettings({
       <Card>
         <CardHeader>
           <CardTitle>Tournament settings</CardTitle>
-          <CardDescription>Headlines, dates and prize money shown across the site.</CardDescription>
+          <CardDescription>Headlines, dates and format shown across the site.</CardDescription>
         </CardHeader>
         <CardContent className="grid gap-3 sm:grid-cols-2">
           <Field label="Tournament name" full>
@@ -68,88 +179,25 @@ export function AdminSettings({
               onChange={(event) => patchConfig({ finalDate: fromLocalInput(event.target.value) })}
             />
           </Field>
-          <Field label="Prize pool (৳)">
-            <Input
-              type="number"
-              value={config.prizePool}
-              onChange={(event) => patchConfig({ prizePool: Number(event.target.value) || 0 })}
-            />
-          </Field>
           <Field label="Format label">
             <Input value={config.format} onChange={(event) => patchConfig({ format: event.target.value })} />
           </Field>
+          <p className="text-xs text-muted-foreground sm:col-span-2">
+            Venue is fixed: <strong className="text-foreground">{FIXED_VENUE}</strong>
+          </p>
         </CardContent>
       </Card>
 
       <Card>
         <CardHeader>
-          <CardTitle>Venues</CardTitle>
-          <CardDescription>Grounds available when assigning a fixture.</CardDescription>
+          <CardTitle>Venue</CardTitle>
+          <CardDescription>A single fixed ground for the whole tournament.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-2">
-          {venues.map((venue) => (
-            <div key={venue.id} className="grid grid-cols-[1fr_1fr_auto] gap-1.5 rounded-md border border-border/60 p-2">
-              <div className="col-span-3 grid grid-cols-2 gap-1.5">
-                <Field label="Name">
-                  <Input
-                    value={venue.name}
-                    onChange={(event) => patchVenue(venue.id, { name: event.target.value })}
-                    className="h-7 text-xs"
-                  />
-                </Field>
-                <Field label="City">
-                  <Input
-                    value={venue.city}
-                    onChange={(event) => patchVenue(venue.id, { city: event.target.value })}
-                    className="h-7 text-xs"
-                  />
-                </Field>
-                <Field label="Capacity">
-                  <Input
-                    type="number"
-                    value={venue.capacity}
-                    onChange={(event) => patchVenue(venue.id, { capacity: Number(event.target.value) || 0 })}
-                    className="h-7 text-xs"
-                  />
-                </Field>
-                <Field label="Surface">
-                  <Input
-                    value={venue.surface}
-                    onChange={(event) => patchVenue(venue.id, { surface: event.target.value })}
-                    className="h-7 text-xs"
-                  />
-                </Field>
-              </div>
-              <Button
-                size="icon-xs"
-                variant="ghost"
-                className="col-start-3"
-                onClick={() => onChange(config, venues.filter((item) => item.id !== venue.id))}
-                aria-label="Remove venue"
-              >
-                <Trash2 />
-              </Button>
-            </div>
-          ))}
-
-          <Button
-            size="xs"
-            variant="outline"
-            onClick={() =>
-              onChange(config, [
-                ...venues,
-                {
-                  id: `v${Date.now()}`,
-                  name: "New ground",
-                  city: "",
-                  capacity: 5000,
-                  surface: "Natural grass",
-                },
-              ])
-            }
-          >
-            <Plus /> Add venue
-          </Button>
+          <p className="rounded-md border border-border/60 bg-muted/30 px-3 py-2 text-sm font-medium">{FIXED_VENUE}</p>
+          <p className="text-[0.7rem] text-muted-foreground">
+            No venue selection — every match, everywhere on the site, shows this ground.
+          </p>
         </CardContent>
       </Card>
     </div>

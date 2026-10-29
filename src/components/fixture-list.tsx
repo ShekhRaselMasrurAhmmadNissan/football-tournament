@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { CalendarDays, MapPin } from "lucide-react";
+import { FIXED_VENUE } from "@/lib/venues";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { MatchCard } from "@/components/match-card";
 import { MatchSheet } from "@/components/match-sheet";
@@ -71,8 +72,7 @@ export function FixtureList() {
       </div>
 
       <p className="flex items-center gap-1.5 text-[0.7rem] text-muted-foreground">
-        <MapPin className="size-3" /> Venues are provisional until the organising committee confirms the ground
-        allocations.
+        <MapPin className="size-3" /> All ties are played at {FIXED_VENUE}.
       </p>
 
       <MatchSheet match={selected} open={open} onOpenChange={setOpen} />

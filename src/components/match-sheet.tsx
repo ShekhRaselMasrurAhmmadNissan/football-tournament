@@ -32,9 +32,11 @@ export function MatchSheet({
 
   if (!match) return null;
 
-  const home = match.homeId ? teamMap[match.homeId] : null;
-  const away = match.awayId ? teamMap[match.awayId] : null;
+  const teamA = match.teamAId ? teamMap[match.teamAId] : null;
+  const teamB = match.teamBId ? teamMap[match.teamBId] : null;
   const winner = winnerOf(match);
+  const statusLabel =
+    match.status === "completed" ? "Full time" : match.status === "postponed" ? "Postponed" : match.status === "cancelled" ? "Cancelled" : "Scheduled";
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -58,16 +60,16 @@ export function MatchSheet({
 
         <div className="px-4">
           <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2 rounded-xl border border-border/70 bg-card/60 p-3">
-            <TeamSide team={home} align="start" winner={winner === home?.id} />
+            <TeamSide team={teamA} align="start" winner={winner === teamA?.id} tba={match.teamAId === null} />
             <div className="px-1 text-center">
               <p className="font-heading text-xl font-semibold tracking-tight tabular-nums">
                 {scoreline(match)}
               </p>
               <p className="mt-0.5 text-[0.65rem] tracking-wider text-muted-foreground uppercase">
-                {match.status === "live" ? `${match.minute}'` : match.status}
+                {statusLabel}
               </p>
             </div>
-            <TeamSide team={away} align="end" winner={winner === away?.id} />
+            <TeamSide team={teamB} align="end" winner={winner === teamB?.id} tba={match.teamBId === null} />
           </div>
 
           {match.goals.length > 0 && (
@@ -130,10 +132,12 @@ function TeamSide({
   team,
   align,
   winner,
+  tba,
 }: {
   team: Team | null;
   align: "start" | "end";
   winner: boolean;
+  tba: boolean;
 }) {
   return (
     <div
@@ -150,7 +154,9 @@ function TeamSide({
       ) : (
         <>
           <span className="size-10 rounded-lg border border-dashed border-border" />
-          <span className="text-sm text-muted-foreground">TBD</span>
+          <span className={cn("text-sm italic", tba ? "text-amber-600" : "text-muted-foreground")}>
+            {tba ? "To be announced" : "To be decided"}
+          </span>
         </>
       )}
     </div>

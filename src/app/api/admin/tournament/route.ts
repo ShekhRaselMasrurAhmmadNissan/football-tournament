@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { COOKIE_NAME, verifySessionToken } from "@/lib/server/auth";
-import { StoreError, loadOrRepair, writeTournament } from "@/lib/server/tournament-store";
-import type { TournamentConfig, Venue } from "@/lib/types";
+import { FIXED_VENUE, StoreError, readTournament, saveConfig } from "@/lib/server/tournament-store";
+import type { Award, TournamentConfig, Venue } from "@/lib/types";
 
 async function isAuthorised(): Promise<boolean> {
   const store = await cookies();
@@ -14,8 +14,24 @@ function text(value: unknown, fallback: string): string {
   return candidate.length > 0 ? candidate : fallback;
 }
 
+function sanitiseAwards(input: unknown, current: Award[]): Award[] {
+  if (!Array.isArray(input)) return current;
+  return (input as Partial<Award>[])
+    .map((award, index) => {
+      const title = String(award.title ?? "").trim();
+      if (!title) return null;
+      return {
+        id: String(award.id ?? `award-${index + 1}`),
+        title,
+        recipient: typeof award.recipient === "string" && award.recipient.trim() ? award.recipient.trim() : null,
+        note: String(award.note ?? ""),
+      } satisfies Award;
+    })
+    .filter((award): award is Award => award !== null);
+}
+
 function sanitiseConfig(input: Partial<TournamentConfig>, current: TournamentConfig): TournamentConfig {
-  const safeCurrent: TournamentConfig = {
+  const safe: TournamentConfig = {
     name: text(current?.name, "Tournament"),
     edition: text(current?.edition, "2026"),
     organiser: text(current?.organiser, "Organising Committee"),
@@ -23,39 +39,31 @@ function sanitiseConfig(input: Partial<TournamentConfig>, current: TournamentCon
     finalDate: text(current?.finalDate, new Date().toISOString()),
     prizePool: Number.isFinite(Number(current?.prizePool)) ? Number(current?.prizePool) : 0,
     format: text(current?.format, "16 teams · Single elimination"),
+    venue: FIXED_VENUE,
+    championPrize: Number.isFinite(Number(current?.championPrize)) ? Number(current?.championPrize) : 50000,
+    runnerUpPrize: Number.isFinite(Number(current?.runnerUpPrize)) ? Number(current?.runnerUpPrize) : 40000,
+    awards: Array.isArray(current?.awards) ? current.awards : [],
   };
+
+  const championPrize = Number.isFinite(Number(input.championPrize)) ? Number(input.championPrize) : safe.championPrize;
+  const runnerUpPrize = Number.isFinite(Number(input.runnerUpPrize)) ? Number(input.runnerUpPrize) : safe.runnerUpPrize;
 
   return {
-    name: text(input.name, safeCurrent.name),
-    edition: text(input.edition, safeCurrent.edition),
-    organiser: text(input.organiser, safeCurrent.organiser),
-    kickoff: text(input.kickoff, safeCurrent.kickoff),
-    finalDate: text(input.finalDate, safeCurrent.finalDate),
-    prizePool: Number.isFinite(Number(input.prizePool)) ? Number(input.prizePool) : safeCurrent.prizePool,
-    format: text(input.format, safeCurrent.format),
+    name: text(input.name, safe.name),
+    edition: text(input.edition, safe.edition),
+    organiser: text(input.organiser, safe.organiser),
+    kickoff: text(input.kickoff, safe.kickoff),
+    finalDate: text(input.finalDate, safe.finalDate),
+    prizePool: championPrize + runnerUpPrize,
+    format: text(input.format, safe.format),
+    venue: FIXED_VENUE,
+    championPrize,
+    runnerUpPrize,
+    awards: sanitiseAwards(input.awards, safe.awards),
   };
 }
 
-function sanitiseVenues(input: unknown, current: Venue[]): Venue[] {
-  if (!Array.isArray(input)) return current;
-  const venues = input
-    .map((raw, index) => {
-      const venue = raw as Partial<Venue>;
-      const name = String(venue.name ?? "").trim();
-      if (!name) return null;
-      return {
-        id: String(venue.id ?? `v${index + 1}`),
-        name,
-        city: String(venue.city ?? "").trim(),
-        capacity: Number.isFinite(Number(venue.capacity)) ? Number(venue.capacity) : 0,
-        surface: String(venue.surface ?? "").trim(),
-      } satisfies Venue;
-    })
-    .filter((venue): venue is Venue => venue !== null);
-  return venues.length ? venues : current;
-}
-
-/** Update tournament settings (name, edition, dates, prize money) and the venue list. */
+/** Update tournament settings, prize money and award titles in MongoDB. */
 export async function PUT(request: Request) {
   if (!(await isAuthorised())) {
     return NextResponse.json({ error: "Not authorised." }, { status: 401 });
@@ -69,17 +77,19 @@ export async function PUT(request: Request) {
   }
 
   try {
-    const data = await loadOrRepair();
+    const data = await readTournament({ seedIfEmpty: false });
     const config = sanitiseConfig(body.config ?? {}, data.config);
-    const venues = body.venues === undefined ? data.venues : sanitiseVenues(body.venues, data.venues);
+    const venues: Venue[] = data.venues.length
+      ? data.venues
+      : [{ id: "v1", name: FIXED_VENUE, city: "Magura", capacity: 0, surface: "" }];
 
-    await writeTournament({ ...data, config, venues });
+    await saveConfig(config, venues);
 
     return NextResponse.json({ ok: true, config, venues, savedAt: new Date().toISOString() });
   } catch (error) {
     return NextResponse.json(
-      { error: error instanceof StoreError ? error.message : "Could not write the data file." },
-      { status: 500 },
+      { error: error instanceof StoreError ? error.message : ((error as Error)?.message ?? "Save failed.") },
+      { status: 400 },
     );
   }
 }

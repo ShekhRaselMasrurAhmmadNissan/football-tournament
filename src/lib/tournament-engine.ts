@@ -1,5 +1,11 @@
 import type { Match, Player, Team } from "@/lib/types";
-import { STAGE_META, STAGE_ORDER } from "@/lib/stages";
+import { STAGE_META } from "@/lib/stages";
+
+/** Temporary bridge: neutral teamA/teamB labels still need a neutral display. */
+
+export function sideOf(match: Match, side: "A" | "B"): string | null {
+  return side === "A" ? match.teamAId : match.teamBId;
+}
 
 export function getTeam(teams: Team[], id: string | null): Team | null {
   if (!id) return null;
@@ -7,61 +13,36 @@ export function getTeam(teams: Team[], id: string | null): Team | null {
 }
 
 export function isDecided(match: Match): boolean {
-  return match.status === "finished" && match.homeScore !== null && match.awayScore !== null;
+  return (
+    match.status === "completed" && match.winnerId !== null && match.teamAScore !== null && match.teamBScore !== null
+  );
 }
 
-/** Winner id of a finished match, accounting for penalty shootouts. */
+/** The admin-confirmed winner. Nothing progresses without this field. */
 export function winnerOf(match: Match): string | null {
-  if (!isDecided(match) || !match.homeId || !match.awayId) return null;
-  const home = match.homeScore as number;
-  const away = match.awayScore as number;
-  if (home > away) return match.homeId;
-  if (away > home) return match.awayId;
-  if (match.homePens !== null && match.awayPens !== null) {
-    if (match.homePens > match.awayPens) return match.homeId;
-    if (match.awayPens > match.homePens) return match.awayId;
-  }
-  return null;
+  if (!isDecided(match) || !match.teamAId || !match.teamBId) return null;
+  if (match.winnerId !== match.teamAId && match.winnerId !== match.teamBId) return null;
+  return match.winnerId;
 }
 
 export function loserOf(match: Match): string | null {
   const winner = winnerOf(match);
   if (!winner) return null;
-  return winner === match.homeId ? match.awayId : match.homeId;
+  return winner === match.teamAId ? match.teamBId : match.teamAId;
 }
 
-/** Rebuilds the whole bracket: every later match inherits its winners from the feeders. */
+/** Burns-in clarity: a knockout tie needs distinct, eligible participants. */
+export function validateParticipants(teamAId: string | null, teamBId: string | null): string | null {
+  if (teamAId && teamBId && teamAId === teamBId) return "A team cannot play itself — pick two different teams.";
+  return null;
+}
+
+/**
+ * Manual-scheduling world: the server never creates fixtures, so there is no
+ * bracket re-resolution. Kept for import compatibility — returns matches untouched.
+ */
 export function resolveBracket(matches: Match[]): Match[] {
-  const byId = new Map(matches.map((match) => [match.id, { ...match }]));
-
-  STAGE_ORDER.forEach((stage) => {
-    if (stage === "r16") return;
-    byId.forEach((match, key) => {
-      if (match.stage !== stage) return;
-      const home = match.homeFrom ? byId.get(match.homeFrom) : null;
-      const away = match.awayFrom ? byId.get(match.awayFrom) : null;
-      const nextHome = home ? winnerOf(home) : match.homeId;
-      const nextAway = away ? winnerOf(away) : match.awayId;
-
-      if (nextHome !== match.homeId || nextAway !== match.awayId) {
-        byId.set(key, {
-          ...match,
-          homeId: nextHome,
-          awayId: nextAway,
-          homeScore: null,
-          awayScore: null,
-          homePens: null,
-          awayPens: null,
-          status: "scheduled",
-          minute: 0,
-          goals: [],
-          cards: [],
-        });
-      }
-    });
-  });
-
-  return matches.map((match) => byId.get(match.id) ?? match);
+  return matches;
 }
 
 export function championOf(matches: Match[]): string | null {
@@ -104,12 +85,12 @@ export function teamRecords(matches: Match[], teams: Team[]): TeamRecord[] {
   });
 
   matches.forEach((match) => {
-    if (!isDecided(match) || !match.homeId || !match.awayId) return;
-    const home = records.get(match.homeId);
-    const away = records.get(match.awayId);
+    if (!isDecided(match) || !match.teamAId || !match.teamBId) return;
+    const home = records.get(match.teamAId);
+    const away = records.get(match.teamBId);
     if (!home || !away) return;
-    const hs = match.homeScore as number;
-    const as = match.awayScore as number;
+    const hs = match.teamAScore as number;
+    const as = match.teamBScore as number;
     const winner = winnerOf(match);
 
     home.played += 1;
@@ -121,12 +102,12 @@ export function teamRecords(matches: Match[], teams: Team[]): TeamRecord[] {
     if (as === 0) home.cleanSheets += 1;
     if (hs === 0) away.cleanSheets += 1;
 
-    if (winner === match.homeId) {
+    if (winner === match.teamAId) {
       home.won += 1;
       home.points += 3;
       away.lost += 1;
       away.eliminated = true;
-    } else if (winner === match.awayId) {
+    } else if (winner === match.teamBId) {
       away.won += 1;
       away.points += 3;
       home.lost += 1;
@@ -198,16 +179,16 @@ export interface TournamentSummary {
 
 export function summarise(matches: Match[]): TournamentSummary {
   const playedMatches = matches.filter(isDecided);
-  const goals = playedMatches.reduce((sum, match) => sum + (match.homeScore ?? 0) + (match.awayScore ?? 0), 0);
+  const goals = playedMatches.reduce((sum, match) => sum + (match.teamAScore ?? 0) + (match.teamBScore ?? 0), 0);
   const cleanSheets = playedMatches.filter(
-    (match) => match.homeScore === 0 || match.awayScore === 0,
+    (match) => match.teamAScore === 0 || match.teamBScore === 0,
   ).length;
-  const shootouts = playedMatches.filter((match) => match.homePens !== null).length;
+  const shootouts = playedMatches.filter((match) => match.teamAPens !== null).length;
 
   let biggestWin: Match | null = null;
   let margin = -1;
   playedMatches.forEach((match) => {
-    const diff = Math.abs((match.homeScore ?? 0) - (match.awayScore ?? 0));
+    const diff = Math.abs((match.teamAScore ?? 0) - (match.teamBScore ?? 0));
     if (diff > margin) {
       margin = diff;
       biggestWin = match;
@@ -274,10 +255,10 @@ export function formatTime(iso: string | null): string {
 }
 
 export function scoreline(match: Match): string {
-  if (match.homeScore === null || match.awayScore === null) return "vs";
-  const base = `${match.homeScore} - ${match.awayScore}`;
-  if (match.homePens !== null && match.awayPens !== null) {
-    return `${base} (${match.homePens}-${match.awayPens} p)`;
+  if (match.teamAScore === null || match.teamBScore === null) return "vs";
+  const base = `${match.teamAScore} - ${match.teamBScore}`;
+  if (match.teamAPens !== null && match.teamBPens !== null) {
+    return `${base} (${match.teamAPens}-${match.teamBPens} p)`;
   }
   return base;
 }

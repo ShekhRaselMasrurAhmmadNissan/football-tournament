@@ -12,6 +12,13 @@ import { formatKickoff, isDecided, winnerOf } from "@/lib/tournament-engine";
 import { cn } from "@/lib/utils";
 import type { Match } from "@/lib/types";
 
+const STATUS_LABEL: Record<Match["status"], string> = {
+  scheduled: "Scheduled",
+  postponed: "Postponed",
+  completed: "Completed",
+  cancelled: "Cancelled",
+};
+
 export function ResultsTable() {
   const { matches, teams } = useTournament();
   const teamMap = React.useMemo(() => Object.fromEntries(teams.map((team) => [team.id, team])), [teams]);
@@ -27,23 +34,24 @@ export function ResultsTable() {
       <div>
         <h1 className="font-heading text-2xl font-semibold tracking-tight">Results</h1>
         <p className="text-sm text-muted-foreground">
-          {played.length} of {matches.length} ties completed. Click a row to edit the scoreline.
+          {played.length} of {matches.length} ties completed. Click a row for details.
         </p>
       </div>
 
       <Card>
         <CardHeader>
           <CardTitle>Completed ties</CardTitle>
-          <CardDescription>Newest first</CardDescription>
+          <CardDescription>Confirmed winners only — newest first</CardDescription>
         </CardHeader>
         <CardContent className="px-0">
           <Table>
             <TableHeader>
               <TableRow>
                 <TableHead className="w-16 pl-4">Round</TableHead>
-                <TableHead>Home</TableHead>
+                <TableHead>Team A</TableHead>
                 <TableHead className="w-20 text-center">Score</TableHead>
-                <TableHead>Away</TableHead>
+                <TableHead>Team B</TableHead>
+                <TableHead className="w-24 text-center">Status</TableHead>
                 <TableHead className="hidden w-40 md:table-cell">Kickoff</TableHead>
                 <TableHead className="hidden w-40 lg:table-cell">Venue</TableHead>
                 <TableHead className="w-24 pr-4 text-right">Winner</TableHead>
@@ -51,8 +59,8 @@ export function ResultsTable() {
             </TableHeader>
             <TableBody>
               {played.map((match) => {
-                const home = match.homeId ? teamMap[match.homeId] : null;
-                const away = match.awayId ? teamMap[match.awayId] : null;
+                const teamA = match.teamAId ? teamMap[match.teamAId] : null;
+                const teamB = match.teamBId ? teamMap[match.teamBId] : null;
                 const winner = winnerOf(match);
                 return (
                   <TableRow
@@ -69,24 +77,27 @@ export function ResultsTable() {
                       </Badge>
                     </TableCell>
                     <TableCell>
-                      <div className={cn("flex items-center gap-2", winner === home?.id && "font-semibold")}>
-                        {home && <TeamCrest team={home} size="xs" />}
-                        <span className="truncate">{home?.name ?? "TBD"}</span>
+                      <div className={cn("flex items-center gap-2", winner === teamA?.id && "font-semibold")}>
+                        {teamA && <TeamCrest team={teamA} size="xs" />}
+                        <span className="truncate">{teamA?.name ?? "TBA"}</span>
                       </div>
                     </TableCell>
                     <TableCell className="text-center font-mono font-semibold tabular-nums">
-                      {match.homeScore} – {match.awayScore}
-                      {match.homePens !== null && (
+                      {match.teamAScore} – {match.teamBScore}
+                      {match.teamAPens !== null && (
                         <span className="ml-1 text-[0.65rem] font-normal text-muted-foreground">
-                          ({match.homePens}-{match.awayPens} p)
+                          ({match.teamAPens}-{match.teamBPens} p)
                         </span>
                       )}
                     </TableCell>
                     <TableCell>
-                      <div className={cn("flex items-center gap-2", winner === away?.id && "font-semibold")}>
-                        {away && <TeamCrest team={away} size="xs" />}
-                        <span className="truncate">{away?.name ?? "TBD"}</span>
+                      <div className={cn("flex items-center gap-2", winner === teamB?.id && "font-semibold")}>
+                        {teamB && <TeamCrest team={teamB} size="xs" />}
+                        <span className="truncate">{teamB?.name ?? "TBA"}</span>
                       </div>
+                    </TableCell>
+                    <TableCell className="text-center text-xs text-muted-foreground">
+                      {STATUS_LABEL[match.status]}
                     </TableCell>
                     <TableCell className="hidden text-xs text-muted-foreground md:table-cell">
                       {formatKickoff(match.kickoff)}
@@ -100,8 +111,8 @@ export function ResultsTable() {
               })}
               {played.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={7} className="py-8 text-center text-sm text-muted-foreground">
-                    No matches completed yet.
+                  <TableCell colSpan={8} className="py-8 text-center text-sm text-muted-foreground">
+                    No ties completed yet — results appear here once the admin confirms a winner.
                   </TableCell>
                 </TableRow>
               )}

@@ -27,16 +27,16 @@ import { cn } from "@/lib/utils";
 import type { Match } from "@/lib/types";
 
 export function HomeDashboard() {
-  const { matches, teams, venues, config } = useTournament();
+  const { matches, teams, config } = useTournament();
   const teamMap = React.useMemo(() => Object.fromEntries(teams.map((team) => [team.id, team])), [teams]);
   const [selected, setSelected] = React.useState<Match | null>(null);
   const [open, setOpen] = React.useState(false);
 
   const summary = summarise(matches);
   const ordered = sortedByKickoff(matches);
-  const upcoming = ordered.filter((match) => match.status === "scheduled" && match.homeId && match.awayId).slice(0, 3);
+  const upcoming = ordered.filter((match) => match.status === "scheduled" && match.teamAId && match.teamBId).slice(0, 3);
   const recent = ordered
-    .filter((match) => match.status === "finished")
+    .filter((match) => match.status === "completed")
     .sort((a, b) => new Date(b.kickoff ?? 0).getTime() - new Date(a.kickoff ?? 0).getTime())
     .slice(0, 4);
   const scorers = topScorers(matches).slice(0, 5);
@@ -92,10 +92,11 @@ export function HomeDashboard() {
                 <Users className="size-3.5" /> {teams.length} teams
               </span>
               <span className="inline-flex items-center gap-1.5">
-                <MapPin className="size-3.5" /> {venues.length} venues
+                <MapPin className="size-3.5" /> {config.venue}
               </span>
               <span className="inline-flex items-center gap-1.5">
-                <Trophy className="size-3.5" /> ৳{config.prizePool.toLocaleString()} prize pool
+                <Trophy className="size-3.5" /> ৳{config.championPrize.toLocaleString("en-IN")} champion · ৳
+                {config.runnerUpPrize.toLocaleString("en-IN")} runner-up
               </span>
             </div>
           </div>
@@ -120,8 +121,8 @@ export function HomeDashboard() {
                   Next kickoff
                 </p>
                 <p className="mt-0.5 text-sm font-medium">
-                  {nextKickoff.homeId ? teamMap[nextKickoff.homeId].shortName : "TBD"} vs{" "}
-                  {nextKickoff.awayId ? teamMap[nextKickoff.awayId].shortName : "TBD"}
+                  {nextKickoff.teamAId ? teamMap[nextKickoff.teamAId].shortName : "TBD"} vs{" "}
+                  {nextKickoff.teamBId ? teamMap[nextKickoff.teamBId].shortName : "TBD"}
                 </p>
                 <p className="text-xs text-muted-foreground">
                   {formatKickoff(nextKickoff.kickoff)} · {nextKickoff.venue}
@@ -136,7 +137,7 @@ export function HomeDashboard() {
       <section className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
         {(["r16", "qf", "sf", "final"] as const).map((stage) => {
           const list = matches.filter((match) => match.stage === stage);
-          const done = list.filter((match) => match.status === "finished").length;
+          const done = list.filter((match) => match.status === "completed").length;
           return (
             <Link
               key={stage}
@@ -269,8 +270,9 @@ export function HomeDashboard() {
           >
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <Trophy className="size-4 text-primary" /> The trophy
+                <Trophy className="size-4 text-primary" /> Prizes & awards
               </CardTitle>
+              <CardDescription>Champion ৳{config.championPrize.toLocaleString("en-IN")} · Runner-up ৳{config.runnerUpPrize.toLocaleString("en-IN")}</CardDescription>
             </CardHeader>
             <CardContent>
               {champion ? (
@@ -285,6 +287,18 @@ export function HomeDashboard() {
                 <p className="text-sm text-muted-foreground">
                   Fifteen matches. One survivor. The final is set for {formatDay(config.finalDate)}.
                 </p>
+              )}
+              {(config.awards ?? []).length > 0 && (
+                <ul className="mt-3 space-y-1 border-t border-border/60 pt-2">
+                  {(config.awards ?? []).map((award) => (
+                    <li key={award.id} className="flex items-center justify-between gap-2 text-xs">
+                      <span className="font-medium">{award.title}</span>
+                      <span className="truncate text-muted-foreground">
+                        {award.recipient ?? "To be announced"}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
               )}
             </CardContent>
           </Card>
@@ -308,7 +322,7 @@ export function HomeDashboard() {
       <p className="mt-4 text-center text-[0.7rem] text-muted-foreground">
         Biggest win so far:{" "}
         {summary.biggestWin
-          ? `${teamMap[winnerOf(summary.biggestWin) ?? summary.biggestWin.homeId ?? "t1"]?.name ?? "TBD"} — ${scoreline(summary.biggestWin)}`
+          ? `${teamMap[winnerOf(summary.biggestWin) ?? summary.biggestWin.teamAId ?? "t1"]?.name ?? "TBD"} — ${scoreline(summary.biggestWin)}`
           : "none yet"}
       </p>
 

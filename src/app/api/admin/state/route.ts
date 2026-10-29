@@ -3,6 +3,8 @@ import { cookies } from "next/headers";
 import { COOKIE_NAME, verifySessionToken } from "@/lib/server/auth";
 import { readTournament } from "@/lib/server/tournament-store";
 
+export const dynamic = "force-dynamic";
+
 /** Fresh copy of the saved tournament data, used by the admin UI after a save. */
 export async function GET() {
   const store = await cookies();

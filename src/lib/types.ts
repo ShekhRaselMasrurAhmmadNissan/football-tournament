@@ -1,6 +1,6 @@
 export type Stage = "r16" | "qf" | "sf" | "final";
 
-export type MatchStatus = "scheduled" | "live" | "finished";
+export type MatchStatus = "scheduled" | "postponed" | "completed" | "cancelled";
 
 export type PlayerPosition = "GK" | "DF" | "MF" | "FW";
 
@@ -39,27 +39,39 @@ export interface Card {
   type: "yellow" | "red";
 }
 
+/**
+ * A knockout tie. There is NO home/away system — teamA/teamB are neutral
+ * labels for the two participants only. Every tie is created manually by
+ * the admin; nothing here is ever generated automatically.
+ */
 export interface Match {
   id: string;
   stage: Stage;
   slot: number;
-  /** null until the feeding matches resolve */
-  homeId: string | null;
-  awayId: string | null;
-  homeScore: number | null;
-  awayScore: number | null;
-  /** penalty shootout, only for knockouts that end level */
-  homePens: number | null;
-  awayPens: number | null;
+  /** null until the admin manually assigns a team */
+  teamAId: string | null;
+  teamBId: string | null;
+  teamAScore: number | null;
+  teamBScore: number | null;
+  /** penalty shootout, only for ties level after normal time */
+  teamAPens: number | null;
+  teamBPens: number | null;
+  /** admin-confirmed winner. A team only progresses via this field. */
+  winnerId: string | null;
   status: MatchStatus;
   kickoff: string | null;
+  /** always the fixed tournament venue */
   venue: string;
   minute: number;
   goals: Goal[];
   cards: Card[];
-  /** Match id of the home side's feeder (e.g. "r16-1"), for bracket wiring */
-  homeFrom: string | null;
-  awayFrom: string | null;
+  /** set when a correction upstream may have invalidated this tie */
+  needsReview: boolean;
+  reviewNote: string | null;
+  /** @deprecated — kept only so old documents can be migrated on read */
+  homeFrom?: string | null;
+  /** @deprecated — kept only so old documents can be migrated on read */
+  awayFrom?: string | null;
 }
 
 export interface Venue {
@@ -70,6 +82,14 @@ export interface Venue {
   surface: string;
 }
 
+export interface Award {
+  id: string;
+  title: string;
+  /** confirmed recipient — null means not yet awarded */
+  recipient: string | null;
+  note: string;
+}
+
 export interface TournamentConfig {
   name: string;
   edition: string;
@@ -78,4 +98,9 @@ export interface TournamentConfig {
   finalDate: string;
   prizePool: number;
   format: string;
+  /** fixed venue for the whole tournament */
+  venue: string;
+  championPrize: number;
+  runnerUpPrize: number;
+  awards: Award[];
 }

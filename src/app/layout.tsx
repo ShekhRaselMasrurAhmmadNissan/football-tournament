@@ -11,6 +11,9 @@ import { readTournament } from "@/lib/server/tournament-store";
 import "./globals.css";
 import { cn } from "@/lib/utils";
 
+// Data lives in MongoDB and changes whenever an organiser saves — never cache a page.
+export const dynamic = "force-dynamic";
+
 const oxanium = Oxanium({subsets:['latin'],variable:'--font-sans'});
 
 const geistMono = Geist_Mono({

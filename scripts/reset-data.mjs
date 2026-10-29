@@ -1,21 +1,28 @@
 /**
- * Rebuilds src/data/tournament-data.ts from the current teams array.
+ * Rebuilds the STARTING DATA module (src/data/tournament-data.ts).
  * Usage: npm run reset-data
- * Keeps teams + venues + config, wipes all match results.
+ * Keeps teams, clears all 15 ties back to "to be announced" on the fixed venue.
  */
 import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 const FILE = path.join(process.cwd(), "src", "data", "tournament-data.ts");
+const FIXED_VENUE = "Magura Govt. Primary School Play Ground";
 
 function sliceLiteral(source, name) {
   const marker = `export const ${name}`;
   const start = source.indexOf(marker);
   if (start < 0) return null;
-  const eq = source.indexOf("=", start);
+  const lineEnd = source.indexOf("\n", start + marker.length);
+  let eq = -1;
+  for (let at = source.indexOf("=", start + marker.length); at !== -1 && (lineEnd === -1 || at < lineEnd); ) {
+    eq = at;
+    at = source.indexOf("=", at + 1);
+  }
+  if (eq === -1) return null;
   const bracket = source.indexOf("[", eq);
   const brace = source.indexOf("{", eq);
-  const isObject = brace >= 0 && (bracket < 0 || brace < bracket);
+  const isObject = brace !== -1 && (bracket === -1 || brace < bracket);
   const from = isObject ? brace : bracket;
   const open = isObject ? "{" : "[";
   const close = isObject ? "}" : "]";
@@ -23,18 +30,27 @@ function sliceLiteral(source, name) {
   let inString = false;
   let escaped = false;
   for (let i = from; i < source.length; i += 1) {
-    const char = source[i];
+    const ch = source[i];
     if (inString) {
       if (escaped) escaped = false;
-      else if (char === "\\") escaped = true;
-      else if (char === '"') inString = false;
+      else if (ch === "\\") escaped = true;
+      else if (ch === '"') inString = false;
       continue;
     }
-    if (char === '"') inString = true;
-    else if (char === open) depth += 1;
-    else if (char === close) {
+    if (ch === '"') inString = true;
+    else if (ch === open) depth += 1;
+    else if (ch === close) {
       depth -= 1;
-      if (depth === 0) return JSON.parse(source.slice(from, i + 1));
+      if (depth === 0) {
+        const literal = source.slice(from, i + 1);
+        try {
+          return JSON.parse(literal);
+        } catch {
+          return JSON.parse(
+            literal.replace(/,(\s*[}\]])/g, "$1").replace(/([{,])(\s*)([A-Za-z_$][\w$]*)(\s*:)/g, '$1$2"$3"$4'),
+          );
+        }
+      }
     }
   }
   return null;
@@ -42,87 +58,79 @@ function sliceLiteral(source, name) {
 
 const source = await readFile(FILE, "utf8").catch(() => "");
 const teams = sliceLiteral(source, "TEAMS") ?? [];
-const venues = sliceLiteral(source, "VENUES") ?? [];
-const config = sliceLiteral(source, "TOURNAMENT_CONFIG") ?? {
-  name: "Magura Golden Cup",
-  edition: "2026",
-  organiser: "Magura Golden Football Club",
-  kickoff: "2026-11-07T16:00:00+06:00",
-  finalDate: "2026-11-29T19:00:00+06:00",
-  prizePool: 1200000,
-  format: "16 teams · Single elimination",
-};
+const config =
+  sliceLiteral(source, "TOURNAMENT_CONFIG") ?? {
+    name: "Magura Golden Cup",
+    edition: "2026",
+    organiser: "Magura Golden Football Club",
+    kickoff: "2026-11-07T16:00:00+06:00",
+    finalDate: "2026-11-29T19:00:00+06:00",
+    prizePool: 90000,
+    format: "16 teams · Single elimination",
+  };
 
 if (teams.length !== 16) {
-  console.error(`Expected 16 teams in the data file, found ${teams.length}. Aborting.`);
+  console.error(`Expected 16 teams in the starting data, found ${teams.length}. Aborting.`);
   process.exit(1);
 }
 
-const PAIRS = [
-  [1, 16],
-  [8, 9],
-  [5, 12],
-  [4, 13],
-  [3, 14],
-  [6, 11],
-  [7, 10],
-  [2, 15],
+const awards = [
+  { id: "award-pom", title: "Player of the Match", recipient: null, note: "" },
+  { id: "award-pot", title: "Player of the Tournament", recipient: null, note: "" },
+  { id: "award-gk", title: "Best Goalkeeper", recipient: null, note: "" },
 ];
 
+const fullConfig = {
+  ...config,
+  venue: FIXED_VENUE,
+  championPrize: 50000,
+  runnerUpPrize: 40000,
+  prizePool: 90000,
+  awards,
+};
+
+const venues = [{ id: "v1", name: FIXED_VENUE, city: "Magura", capacity: 0, surface: "" }];
+
 const matches = [];
-PAIRS.forEach(([h, a], i) =>
-  matches.push({
-    id: `r16-${i + 1}`,
-    stage: "r16",
-    slot: i + 1,
-    homeId: teams[h - 1].id,
-    awayId: teams[a - 1].id,
-    homeScore: null,
-    awayScore: null,
-    homePens: null,
-    awayPens: null,
-    status: "scheduled",
-    kickoff: new Date(Date.UTC(2026, 10, 7 + Math.floor(i / 2), 10 + (i % 2) * 3)).toISOString(),
-    venue: (venues[i % Math.max(venues.length, 1)] ?? { name: "Main Ground" }).name,
-    minute: 0,
-    goals: [],
-    cards: [],
-    homeFrom: null,
-    awayFrom: null,
-  }),
-);
-[
-  ["qf", 4, "r16"],
-  ["sf", 2, "qf"],
-  ["final", 1, "sf"],
-].forEach(([stage, count, from]) => {
-  for (let s = 1; s <= count; s += 1) {
+["r16-8-slots-here"].forEach(() => {});
+const PLAN = [
+  ["r16", 8],
+  ["qf", 4],
+  ["sf", 2],
+  ["final", 1],
+];
+PLAN.forEach(([stage, count]) => {
+  for (let slot = 1; slot <= count; slot += 1) {
     matches.push({
-      id: `${stage}-${s}`,
+      id: `${stage}-${slot}`,
       stage,
-      slot: s,
-      homeId: null,
-      awayId: null,
-      homeScore: null,
-      awayScore: null,
-      homePens: null,
-      awayPens: null,
+      slot,
+      teamAId: null,
+      teamBId: null,
+      teamAScore: null,
+      teamBScore: null,
+      teamAPens: null,
+      teamBPens: null,
+      winnerId: null,
       status: "scheduled",
-      kickoff: new Date(Date.UTC(2026, 10, 15 + s, 12)).toISOString(),
-      venue: (venues[s % Math.max(venues.length, 1)] ?? { name: "Main Ground" }).name,
+      kickoff: null,
+      venue: FIXED_VENUE,
       minute: 0,
       goals: [],
       cards: [],
-      homeFrom: `${from}-${s * 2 - 1}`,
-      awayFrom: `${from}-${s * 2}`,
+      needsReview: false,
+      reviewNote: null,
     });
   }
 });
 
 const HEADER = `/**
- * Tournament data — a plain array of match objects, edited by the /admin portal.
- * No database, no JSON file: this module *is* the store. Every save rewrites the
- * \`matches\` / \`teams\` / \`config\` / \`venues\` declarations below.
+ * STARTING DATA — only used once, to fill an empty MongoDB database.
+ *
+ * The live site and the /admin portal read and write MongoDB
+ * (see src/lib/server/tournament-store.ts). This file is the initial fixture:
+ * it was seeded into the database, and can be re-loaded any time with
+ * \`npm run seed\` or \`npm run seed -- --wipe\`.
  */
 import type { Match, Team, TournamentConfig, Venue } from "@/lib/types";
 `;
@@ -130,11 +138,13 @@ import type { Match, Team, TournamentConfig, Venue } from "@/lib/types";
 const lit = (name, type, value) => `export const ${name}: ${type} = ${JSON.stringify(value, null, 2)};\n`;
 const out = [
   HEADER,
-  lit("TOURNAMENT_CONFIG", "TournamentConfig", config),
+  lit("TOURNAMENT_CONFIG", "TournamentConfig", fullConfig),
   lit("VENUES", "Venue[]", venues),
   lit("TEAMS", "Team[]", teams),
   lit("MATCHES", "Match[]", matches),
 ].join("\n");
 
 await writeFile(FILE, out, "utf8");
-console.log(`Rebuilt ${path.relative(process.cwd(), FILE)} — ${teams.length} teams, ${matches.length} matches, ${venues.length} venues.`);
+console.log(
+  `Rebuilt ${path.relative(process.cwd(), FILE)} — ${teams.length} teams, ${matches.length} blank ties on "${FIXED_VENUE}". Run "npm run seed -- --wipe" to push it into MongoDB.`,
+);
